@@ -4,6 +4,8 @@ class Roadmap {
         this.projects = document.querySelectorAll('.project-card');
         this.modal = document.getElementById('projectModal');
         this.progressFill = document.querySelector('.progress-fill');
+        this.touchStartY = 0;
+        this.isScrolling = false;
         this.init();
     }
 
@@ -14,6 +16,7 @@ class Roadmap {
         this.initProgressTracking();
         this.initKeyboardNavigation();
         this.initAnimations();
+        this.initTouchHandlers();
     }
 
     initStages() {
@@ -23,6 +26,8 @@ class Roadmap {
             
             [header, toggle].forEach(element => {
                 element.addEventListener('click', (e) => {
+                    // Предотвращаем срабатывание при скролле
+                    if (this.isScrolling) return;
                     e.stopPropagation();
                     this.toggleStage(stage);
                 });
@@ -30,7 +35,6 @@ class Roadmap {
 
             this.observeStage(stage, index);
         });
-
     }
 
     initProjects() {
@@ -38,16 +42,31 @@ class Roadmap {
             const header = project.querySelector('.project-header');
             const toggle = project.querySelector('.project-toggle');
             
-            header.addEventListener('click', (e) => {
+            // Используем click для десктопа и touchstart для мобильных
+            const handleProjectClick = (e) => {
+                if (this.isScrolling) return;
                 if (!e.target.closest('.project-toggle')) {
+                    e.preventDefault();
                     this.openProjectModal(project);
                 }
-            });
+            };
+
+            header.addEventListener('click', handleProjectClick);
+            header.addEventListener('touchstart', handleProjectClick, { passive: false });
 
             toggle.addEventListener('click', (e) => {
+                if (this.isScrolling) return;
                 e.stopPropagation();
+                e.preventDefault();
                 this.toggleProject(project);
             });
+
+            toggle.addEventListener('touchstart', (e) => {
+                if (this.isScrolling) return;
+                e.stopPropagation();
+                e.preventDefault();
+                this.toggleProject(project);
+            }, { passive: false });
         });
     }
 
@@ -55,7 +74,11 @@ class Roadmap {
         if (!this.modal) return;
         
         const closeBtn = this.modal.querySelector('.modal-close');
-        closeBtn.addEventListener('click', () => this.closeModal());
+        
+        const closeModalHandler = () => this.closeModal();
+        
+        closeBtn.addEventListener('click', closeModalHandler);
+        closeBtn.addEventListener('touchstart', closeModalHandler, { passive: true });
 
         this.modal.addEventListener('click', (e) => {
             if (e.target === this.modal) {
@@ -63,12 +86,47 @@ class Roadmap {
             }
         });
 
+        this.modal.addEventListener('touchstart', (e) => {
+            if (e.target === this.modal) {
+                e.preventDefault();
+                this.closeModal();
+            }
+        }, { passive: false });
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.modal.style.display === 'block') {
                 this.closeModal();
             }
         });
     }
+
+    initTouchHandlers() {
+        let touchStartY = 0;
+        let scrollTimer;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartY = e.touches[0].clientY;
+            this.isScrolling = false;
+        }, { passive: true });
+
+        document.addEventListener('touchmove', (e) => {
+            this.isScrolling = true;
+            // Сбрасываем таймер при скролле
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+                this.isScrolling = false;
+            }, 100);
+        }, { passive: true });
+
+        document.addEventListener('touchend', () => {
+            // Даем небольшой таймаут после скролла перед разрешением кликов
+            setTimeout(() => {
+                this.isScrolling = false;
+            }, 150);
+        }, { passive: true });
+    }
+
+    // Остальные методы остаются без изменений до initAnimations...
 
     toggleStage(stage) {
         if (stage.classList.contains('active')) {
@@ -134,6 +192,16 @@ class Roadmap {
         
         this.modal.style.display = 'block';
         document.body.style.overflow = 'hidden';
+        
+        // Добавляем обработчик для закрытия по клику на overlay
+        const overlayClickHandler = (e) => {
+            if (e.target === this.modal) {
+                this.closeModal();
+            }
+        };
+        
+        this.modal.addEventListener('click', overlayClickHandler);
+        this.modal.addEventListener('touchstart', overlayClickHandler, { passive: true });
     }
 
     closeModal() {
@@ -147,7 +215,6 @@ class Roadmap {
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    // Добавляем анимацию только один раз
                     if (!entry.target.hasAttribute('data-animated')) {
                         entry.target.style.animation = `fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.1}s both`;
                         entry.target.setAttribute('data-animated', 'true');
@@ -238,14 +305,12 @@ class Roadmap {
     }
 
     initAnimations() {
-        // Плавное появление всей страницы
         document.body.style.opacity = '0';
         setTimeout(() => {
             document.body.style.transition = 'opacity 0.5s ease-in-out';
             document.body.style.opacity = '1';
         }, 100);
 
-        // Параллакс эффект для хедера
         window.addEventListener('scroll', () => {
             const scrolled = window.pageYOffset;
             const header = document.querySelector('.header');
@@ -255,7 +320,6 @@ class Roadmap {
         });
     }
 
-    // Public API для внешней навигации
     goToStage(stageNumber) {
         const targetStage = document.querySelector(`.stage[data-stage="${stageNumber}"]`);
         if (targetStage) {
@@ -272,46 +336,9 @@ class Roadmap {
     }
 }
 
-// Инициализация когда DOM готов
+// Упрощенная инициализация - УДАЛИТЕ старые обработчики жестов
 document.addEventListener('DOMContentLoaded', () => {
-    const roadmap = new Roadmap();
-
-    // Обработчик клика вне блоков для закрытия (опционально)
-    document.addEventListener('click', (e) => {
-        // Если клик не по заголовку этапа и не по переключателю
-        if (!e.target.closest('.stage-header') && 
-            !e.target.closest('.stage-toggle') &&
-            !e.target.closest('.project-header') &&
-            !e.target.closest('.project-toggle')) {
-            // roadmap.closeAllStages(); // Раскомментируйте если хотите закрывать этапы при клике вне
-        }
-    });
-
-    // Поддержка жестов для мобильных (опционально)
-    let touchStartY = 0;
-    document.addEventListener('touchstart', (e) => {
-        touchStartY = e.touches[0].clientY;
-    });
-
-    document.addEventListener('touchend', (e) => {
-        const touchEndY = e.changedTouches[0].clientY;
-        const diff = touchStartY - touchEndY;
-        
-        if (Math.abs(diff) > 50) {
-            if (diff > 0) {
-                roadmap.navigateToNextStage();
-            } else {
-                roadmap.navigateToPrevStage();
-            }
-        }
-    });
-
-    // Service Worker для PWA (опционально)
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            // navigator.serviceWorker.register('/sw.js');
-        });
-    }
+    new Roadmap();
 });
 
 // Глобальные функции для навигации извне
