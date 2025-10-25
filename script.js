@@ -31,8 +31,6 @@ class Roadmap {
             this.observeStage(stage, index);
         });
 
-        // Открываем первый этап по умолчанию
-        this.openStage(this.stages[0], false); // false - без скролла
     }
 
     initProjects() {
